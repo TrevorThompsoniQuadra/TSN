@@ -1,4 +1,5 @@
 import { 
+  signInWithPopup,
   signInWithRedirect, 
   getRedirectResult, 
   GoogleAuthProvider, 
@@ -12,8 +13,21 @@ import type { User } from "@shared/schema";
 
 const provider = new GoogleAuthProvider();
 
-export function signInWithGoogle() {
-  return signInWithRedirect(auth, provider);
+export async function signInWithGoogle() {
+  console.log('Starting Google sign-in...');
+  
+  try {
+    const result = await signInWithPopup(auth, provider);
+    console.log('Sign-in successful:', result.user.email);
+    
+    // Sync user with database immediately
+    await syncUserWithDatabase(result.user);
+    
+    return result.user;
+  } catch (error) {
+    console.error('Error in signInWithGoogle:', error);
+    throw error;
+  }
 }
 
 export function signOut() {
@@ -21,13 +35,23 @@ export function signOut() {
 }
 
 export async function handleAuthRedirect(): Promise<FirebaseUser | null> {
-  const result = await getRedirectResult(auth);
-  if (result?.user) {
-    // Create or update user in our database
-    await syncUserWithDatabase(result.user);
-    return result.user;
+  try {
+    console.log('Checking for redirect result...');
+    const result = await getRedirectResult(auth);
+    console.log('Redirect result:', result);
+    
+    if (result?.user) {
+      console.log('User found in redirect result:', result.user.email);
+      // Create or update user in our database
+      await syncUserWithDatabase(result.user);
+      return result.user;
+    }
+    console.log('No user found in redirect result');
+    return null;
+  } catch (error) {
+    console.error('Error handling auth redirect:', error);
+    return null;
   }
-  return null;
 }
 
 export async function syncUserWithDatabase(firebaseUser: FirebaseUser): Promise<User> {

@@ -14,10 +14,10 @@ export default function Home() {
 
   const featuredArticle = articles?.[0];
   const otherArticles = articles?.slice(1) || [];
-
+  console.log(error)
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Card className="w-full max-w-md mx-auto">
           <CardContent className="pt-6">
             <div className="flex mb-4 gap-2">
@@ -34,7 +34,7 @@ export default function Home() {
   }
 
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-8 space-y-6">

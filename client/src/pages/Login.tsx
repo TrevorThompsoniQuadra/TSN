@@ -16,17 +16,15 @@ export default function Login() {
     }
   }, [firebaseUser, setLocation]);
 
-  useEffect(() => {
-    handleAuthRedirect().then((user) => {
-      if (user) {
-        setLocation('/');
-      }
-    });
-  }, [setLocation]);
+  // Removed redirect handling since we're using popup authentication
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      if (user) {
+        console.log('Redirecting to home...');
+        setLocation('/');
+      }
     } catch (error) {
       console.error('Error signing in:', error);
     }
