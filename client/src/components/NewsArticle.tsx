@@ -11,9 +11,10 @@ import type { Article } from "@shared/schema";
 interface NewsArticleProps {
   article: Article;
   featured?: boolean;
+  onClick?: () => void;
 }
 
-export function NewsArticle({ article, featured = false }: NewsArticleProps) {
+export function NewsArticle({ article, featured = false, onClick }: NewsArticleProps) {
   const [isLiked, setIsLiked] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -85,7 +86,10 @@ export function NewsArticle({ article, featured = false }: NewsArticleProps) {
   };
 
   return (
-    <Card className="overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow">
+    <Card 
+      className="overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
+      onClick={onClick}
+    >
       {article.imageUrl && (
         <img 
           src={article.imageUrl} 

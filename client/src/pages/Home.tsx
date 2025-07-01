@@ -1,16 +1,89 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { NewsArticle } from "@/components/NewsArticle";
+import { ArticleModal } from "@/components/ArticleModal";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Article } from "@shared/schema";
 
+interface NewsAPIArticle {
+  title: string;
+  content: string;
+  summary: string;
+  category: string;
+  imageUrl: string;
+  tags: string[];
+  publishedAt: string;
+  source: string;
+  url: string;
+}
+
 export default function Home() {
-  const { data: articles, isLoading, error } = useQuery<Article[]>({
-    queryKey: ['/api/articles'],
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Fetch real breaking sports news from NewsAPI
+  const { data: newsData, isLoading: isLoadingNews, error: newsError, refetch: refetchNews } = useQuery<NewsAPIArticle[]>({
+    queryKey: ['/api/news/breaking'],
+    refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
   });
+
+  // Console logging when data changes
+  if (newsData) {
+    console.log('📰 REAL NEWS LOADED:', newsData.length, 'articles');
+    console.log('🔥 Article titles:', newsData.map(a => a.title));
+  }
+  if (newsError) {
+    console.error('❌ NewsAPI Error:', newsError);
+  }
+
+  // Fallback to stored articles if real news fails
+  const { data: storedArticles, isLoading: isLoadingStored } = useQuery<Article[]>({
+    queryKey: ['/api/articles'],
+    enabled: !newsData || newsData.length === 0,
+  });
+
+  // Use real news if available, otherwise fall back to stored articles
+  const articles = newsData?.map((article, index) => ({
+    id: index + 1000, // Use high IDs to avoid conflicts
+    title: article.title,
+    content: article.content,
+    summary: article.summary,
+    imageUrl: article.imageUrl,
+    author: article.source,
+    source: article.source,
+    category: article.category,
+    tags: article.tags,
+    publishedAt: new Date(article.publishedAt),
+    createdAt: new Date(article.publishedAt),
+    isBreaking: index === 0,
+    likes: 0, // Start with 0 real likes
+    views: 0, // Start with 0 real views
+  })) || storedArticles;
+
+  const isLoading = isLoadingNews || isLoadingStored;
+  const error = newsError;
+
+  const handleArticleClick = (article: Article) => {
+    setSelectedArticle(article);
+    setIsModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedArticle(null);
+  };
+
+  // Console logging for debugging
+  console.log('🔍 HOME PAGE STATE:');
+  console.log('- Real News Loading:', isLoadingNews);
+  console.log('- Real News Data:', newsData?.length || 0, 'articles');
+  console.log('- Stored Articles Loading:', isLoadingStored);
+  console.log('- Final Articles Count:', articles?.length || 0);
+  console.log('- Any Errors:', error ? 'Yes' : 'No');
 
   const featuredArticle = articles?.[0];
   const otherArticles = articles?.slice(1) || [];
@@ -32,6 +105,7 @@ export default function Home() {
       </div>
     );
   }
+  console.log(selectedArticle, "asedasdf")
 
   return (
     <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -42,11 +116,19 @@ export default function Home() {
           <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center space-x-3">
               <span className="bg-white text-red-600 px-2 py-1 rounded text-xs font-bold animate-pulse">
-                BREAKING
+                LIVE
               </span>
-              <p className="font-semibold">Lakers acquire superstar in blockbuster trade deal</p>
-              <Button variant="ghost" size="sm" className="ml-auto text-white hover:text-red-200">
-                ×
+              <p className="font-semibold flex-1">
+                {articles?.[0]?.title || "Latest sports news loading..."}
+              </p>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white hover:text-red-200"
+                onClick={() => refetchNews()}
+                disabled={isLoadingNews}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoadingNews ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
@@ -67,7 +149,11 @@ export default function Home() {
               </CardContent>
             </Card>
           ) : featuredArticle ? (
-            <NewsArticle article={featuredArticle} featured />
+            <NewsArticle 
+              article={featuredArticle} 
+              featured 
+              onClick={() => handleArticleClick(featuredArticle)} 
+            />
           ) : (
             <Card>
               <CardContent className="pt-6 text-center">
@@ -91,7 +177,11 @@ export default function Home() {
               ))
             ) : otherArticles.length > 0 ? (
               otherArticles.map((article) => (
-                <NewsArticle key={article.id} article={article} />
+                <NewsArticle 
+                  key={article.id} 
+                  article={article} 
+                  onClick={() => handleArticleClick(article)} 
+                />
               ))
             ) : (
               <div className="col-span-2 text-center py-8">
@@ -111,6 +201,13 @@ export default function Home() {
         {/* Sidebar */}
         <Sidebar />
       </div>
+
+      {/* Article Modal */}
+      <ArticleModal
+        article={selectedArticle}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+      />
     </main>
   );
 }

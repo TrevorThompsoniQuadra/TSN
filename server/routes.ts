@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, insertCommentSchema } from "@shared/schema";
+import { espnNewsService } from "./news-api";
 import { z } from "zod";
 
 // Helper function for error handling
@@ -107,6 +108,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(article);
     } catch (error) {
       console.error('Error incrementing article views:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Real sports news from ESPN RSS
+  app.get("/api/news/breaking", async (req, res) => {
+    try {
+      const articles = await espnNewsService.getBreakingAmericanSportsNews();
+      res.json(articles);
+    } catch (error) {
+      console.error('Error fetching breaking news from ESPN RSS:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Trending topics from ESPN RSS
+  app.get("/api/ai/trending-topics", async (req, res) => {
+    try {
+      const topics = await espnNewsService.getTrendingAmericanSportsTopics();
+      res.json(topics);
+    } catch (error) {
+      console.error('Error fetching trending topics from ESPN RSS:', error);
       res.status(500).json({ error: handleError(error) });
     }
   });
