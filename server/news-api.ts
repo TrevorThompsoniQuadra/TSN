@@ -13,14 +13,62 @@ export interface NewsDataArticle {
 }
 
 export class ESPNNewsService {
-    private rssUrl = 'https://www.espn.com/espn/rss/news';
-    private corsProxy = 'https://api.allorigins.win/raw?url=';
+    private apiUrl = 'https://site.api.espn.com/apis/site/v2/sports';
+    private newsUrl = 'https://site.api.espn.com/apis/v2/sports/news';
 
     async getBreakingAmericanSportsNews(): Promise<NewsDataArticle[]> {
         try {
-            console.log('Fetching breaking American sports news from ESPN RSS...');
+            console.log('Fetching breaking American sports news from ESPN API...');
             
-            const response = await fetch(`${this.corsProxy}${encodeURIComponent(this.rssUrl)}`);
+            // Try multiple ESPN news endpoints
+            const newsEndpoints = [
+                `${this.newsUrl}?limit=20`,
+                `${this.apiUrl}/football/nfl/news`,
+                `${this.apiUrl}/basketball/nba/news`,
+                `${this.apiUrl}/baseball/mlb/news`
+            ];
+
+            const allArticles: NewsDataArticle[] = [];
+
+            for (const endpoint of newsEndpoints) {
+                try {
+                    const response = await fetch(endpoint);
+                    if (!response.ok) {
+                        console.log(`ESPN API endpoint ${endpoint} returned ${response.status}`);
+                        continue;
+                    }
+                    
+                    const data = await response.json();
+                    const articles = this.parseESPNNewsResponse(data);
+                    allArticles.push(...articles);
+                } catch (error) {
+                    console.log(`Error fetching from ${endpoint}:`, error);
+                }
+            }
+
+            if (allArticles.length > 0) {
+                console.log(`ESPN API returned ${allArticles.length} news articles`);
+                // Remove duplicates based on title
+                const uniqueArticles = this.removeDuplicates(allArticles);
+                return uniqueArticles.slice(0, 10);
+            }
+
+            // If no articles from API, try RSS as fallback
+            return await this.getRSSFallback();
+
+        } catch (error) {
+            console.error('ESPN News API Error:', error);
+            return await this.getRSSFallback();
+        }
+    }
+
+    private async getRSSFallback(): Promise<NewsDataArticle[]> {
+        try {
+            console.log('Trying ESPN RSS as fallback...');
+            const corsProxy = 'https://api.allorigins.win/raw?url=';
+            const rssUrl = 'https://www.espn.com/espn/rss/news';
+            
+            const response = await fetch(`${corsProxy}${encodeURIComponent(rssUrl)}`);
             
             if (!response.ok) {
                 throw new Error(`ESPN RSS request failed: ${response.status} ${response.statusText}`);
@@ -30,22 +78,80 @@ export class ESPNNewsService {
             const articles = this.parseRSSFeed(xmlText);
             
             console.log(`ESPN RSS returned ${articles.length} articles`);
-            
-            if (articles.length === 0) {
-                return this.getFallbackArticles();
-            }
-
             return articles.slice(0, 10);
 
         } catch (error) {
-            console.error('ESPN RSS Error:', error);
+            console.error('ESPN RSS also failed:', error);
             return this.getFallbackArticles();
         }
     }
 
+    private parseESPNNewsResponse(data: any): NewsDataArticle[] {
+        const articles: NewsDataArticle[] = [];
+
+        try {
+            // Handle different ESPN API response formats
+            const newsItems = data.articles || data.items || data.news || [];
+            
+            newsItems.forEach((item: any) => {
+                if (!item.headline && !item.title) return;
+
+                const article: NewsDataArticle = {
+                    title: item.headline || item.title || 'Sports News',
+                    content: this.generateContent(
+                        item.headline || item.title,
+                        item.description || item.summary || '',
+                        item.links?.web?.href || item.url || ''
+                    ),
+                    summary: item.description || item.summary || 'Latest sports news update',
+                    category: this.extractCategoryFromESPN(item),
+                    imageUrl: this.getESPNImage(item),
+                    tags: this.extractESPNTags(item.headline || item.title || ''),
+                    publishedAt: this.formatDate(item.published || item.lastModified || new Date().toISOString()),
+                    source: 'ESPN',
+                    url: item.links?.web?.href || item.url || 'https://espn.com'
+                };
+
+                articles.push(article);
+            });
+
+        } catch (error) {
+            console.error('Error parsing ESPN news response:', error);
+        }
+
+        return articles;
+    }
+
+    private removeDuplicates(articles: NewsDataArticle[]): NewsDataArticle[] {
+        const seen = new Set();
+        return articles.filter(article => {
+            const key = article.title.toLowerCase().trim();
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+    }
+
+    private extractCategoryFromESPN(item: any): string {
+        // Try to get category from ESPN API structure
+        if (item.categories && item.categories.length > 0) {
+            return item.categories[0].description || item.categories[0].sportName || 'Sports';
+        }
+        
+        if (item.sport) {
+            return item.sport.displayName || item.sport.name || 'Sports';
+        }
+
+        // Fallback to URL-based category extraction
+        const url = item.links?.web?.href || item.url || '';
+        return this.extractCategoryFromUrl(url);
+    }
+
     async getSpecificAmericanSport(sport: string): Promise<NewsDataArticle[]> {
         try {
-            console.log(`Fetching ${sport} news from ESPN RSS...`);
+            console.log(`Fetching ${sport} news from ESPN API...`);
             
             const allArticles = await this.getBreakingAmericanSportsNews();
             
@@ -82,7 +188,7 @@ export class ESPNNewsService {
                         content: this.generateContent(title, description, link),
                         summary: this.cleanDescription(description),
                         category: this.extractCategoryFromUrl(link),
-                        imageUrl: this.getESPNImage(title + ' ' + description),
+                        imageUrl: this.getSportsLogoByCategory(this.extractCategoryFromUrl(link)),
                         tags: this.extractESPNTags(title + ' ' + description),
                         publishedAt: this.formatDate(pubDate),
                         source: 'ESPN',
@@ -167,6 +273,21 @@ export class ESPNNewsService {
         return relevantTerms.some(term => text.includes(term));
     }
 
+    private getESPNImage(item: any): string {
+        // Try to get image from ESPN API response
+        if (item.images && item.images.length > 0) {
+            return item.images[0].url || item.images[0].href || '';
+        }
+        
+        if (item.thumbnail) {
+            return item.thumbnail;
+        }
+
+        // Fallback to category-based images
+        const category = this.extractCategoryFromESPN(item);
+        return this.getSportsLogoByCategory(category);
+    }
+
     private extractESPNTags(text: string): string[] {
         const tags: string[] = [];
         const textLower = text.toLowerCase();
@@ -203,40 +324,32 @@ export class ESPNNewsService {
         ).slice(0, 4);
     }
 
-    private getESPNImage(text: string): string {
-        const textLower = text.toLowerCase();
+    private getSportsLogoByCategory(category: string): string {
+        const categoryLower = category.toLowerCase();
         
-        // Sport-specific images
-        if (textLower.includes('nba') || textLower.includes('basketball')) {
-            return 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('nfl') || textLower.includes('football')) {
-            return 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('mlb') || textLower.includes('baseball')) {
-            return 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('golf')) {
-            return 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('hockey') || textLower.includes('nhl')) {
-            return 'https://images.unsplash.com/photo-1578662015659-ccea53ae4a20?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('tennis')) {
-            return 'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=800&h=400&fit=crop';
-        }
-        if (textLower.includes('soccer')) {
-            return 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=400&fit=crop';
-        }
+        // Sport-specific logos based on ESPN URL categories
+        const logoMap: { [key: string]: string } = {
+            'nba': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&h=400&fit=crop',
+            'nfl': 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&h=400&fit=crop',
+            'mlb': 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=400&fit=crop',
+            'wnba': 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?w=800&h=400&fit=crop',
+            'college-football': 'https://images.unsplash.com/photo-1577223625816-7546f13df25d?w=800&h=400&fit=crop',
+            'college-basketball': 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=400&fit=crop',
+            'mens-college-basketball': 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=400&fit=crop',
+            'womens-college-basketball': 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?w=800&h=400&fit=crop',
+            'nhl': 'https://images.unsplash.com/photo-1578662015659-ccea53ae4a20?w=800&h=400&fit=crop',
+            'golf': 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=800&h=400&fit=crop',
+            'tennis': 'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=800&h=400&fit=crop',
+            'soccer': 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=400&fit=crop',
+            'mls': 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=400&fit=crop',
+            'boxing': 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?w=800&h=400&fit=crop',
+            'mma': 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?w=800&h=400&fit=crop',
+            'racing': 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&h=400&fit=crop',
+            'olympics': 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&h=400&fit=crop'
+        };
         
-        // Default sports image
-        const images = [
-            'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&h=400&fit=crop',
-            'https://images.unsplash.com/photo-1577223625816-7546f13df25d?w=800&h=400&fit=crop',
-            'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=400&fit=crop'
-        ];
-        
-        return images[Math.floor(Math.random() * images.length)];
+        // Return sport-specific logo or default sports image
+        return logoMap[categoryLower] || 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&h=400&fit=crop';
     }
 
     private formatDate(pubDate: string): string {

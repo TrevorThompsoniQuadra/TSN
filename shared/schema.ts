@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   photoURL: text("photo_url"),
   favoriteTeams: text("favorite_teams").array().default([]),
+  favoritePlayers: text("favorite_players").array().default([]),
   favoriteSports: text("favorite_sports").array().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

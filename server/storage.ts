@@ -24,6 +24,10 @@ export interface IStorage {
   getUserById(id: number): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User>;
+  addFavoriteTeam(userId: number, team: string): Promise<User>;
+  removeFavoriteTeam(userId: number, team: string): Promise<User>;
+  addFavoritePlayer(userId: number, player: string): Promise<User>;
+  removeFavoritePlayer(userId: number, player: string): Promise<User>;
   
   // Article methods
   getArticles(limit?: number, offset?: number): Promise<Article[]>;
@@ -166,6 +170,7 @@ export class MemStorage implements IStorage {
       displayName: user.displayName || null,
       photoURL: user.photoURL || null,
       favoriteTeams: user.favoriteTeams || null,
+      favoritePlayers: user.favoritePlayers || null,
       favoriteSports: user.favoriteSports || null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -184,6 +189,68 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async addFavoriteTeam(userId: number, team: string): Promise<User> {
+    const existingUser = this.users.get(userId);
+    if (!existingUser) throw new Error("User not found");
+    
+    const currentFavorites = existingUser.favoriteTeams || [];
+    if (!currentFavorites.includes(team)) {
+      const updatedUser: User = {
+        ...existingUser,
+        favoriteTeams: [...currentFavorites, team],
+        updatedAt: new Date(),
+      };
+      this.users.set(userId, updatedUser);
+      return updatedUser;
+    }
+    return existingUser;
+  }
+
+  async removeFavoriteTeam(userId: number, team: string): Promise<User> {
+    const existingUser = this.users.get(userId);
+    if (!existingUser) throw new Error("User not found");
+    
+    const currentFavorites = existingUser.favoriteTeams || [];
+    const updatedUser: User = {
+      ...existingUser,
+      favoriteTeams: currentFavorites.filter(t => t !== team),
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
+
+  async addFavoritePlayer(userId: number, player: string): Promise<User> {
+    const existingUser = this.users.get(userId);
+    if (!existingUser) throw new Error("User not found");
+    
+    const currentFavorites = existingUser.favoritePlayers || [];
+    if (!currentFavorites.includes(player)) {
+      const updatedUser: User = {
+        ...existingUser,
+        favoritePlayers: [...currentFavorites, player],
+        updatedAt: new Date(),
+      };
+      this.users.set(userId, updatedUser);
+      return updatedUser;
+    }
+    return existingUser;
+  }
+
+  async removeFavoritePlayer(userId: number, player: string): Promise<User> {
+    const existingUser = this.users.get(userId);
+    if (!existingUser) throw new Error("User not found");
+    
+    const currentFavorites = existingUser.favoritePlayers || [];
+    const updatedUser: User = {
+      ...existingUser,
+      favoritePlayers: currentFavorites.filter(p => p !== player),
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updatedUser);
     return updatedUser;
   }
 

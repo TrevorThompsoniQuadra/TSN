@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, insertCommentSchema } from "@shared/schema";
 import { espnNewsService } from "./news-api";
+import { espnScoresAPI } from "./live-scores-api";
+import { sportsTeamsAPI } from "./sports-teams-api";
 import { z } from "zod";
 
 // Helper function for error handling
@@ -39,6 +41,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.getUserById(id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error fetching user by ID:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
   app.put("/api/users/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -47,6 +63,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(user);
     } catch (error) {
       console.error('Error updating user:', error);
+      res.status(400).json({ error: handleError(error) });
+    }
+  });
+
+  // Favorite teams routes
+  app.post("/api/users/:id/favorite-teams", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { team } = z.object({ team: z.string() }).parse(req.body);
+      const user = await storage.addFavoriteTeam(userId, team);
+      res.json(user);
+    } catch (error) {
+      console.error('Error adding favorite team:', error);
+      res.status(400).json({ error: handleError(error) });
+    }
+  });
+
+  app.delete("/api/users/:id/favorite-teams/:team", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const team = decodeURIComponent(req.params.team);
+      const user = await storage.removeFavoriteTeam(userId, team);
+      res.json(user);
+    } catch (error) {
+      console.error('Error removing favorite team:', error);
+      res.status(400).json({ error: handleError(error) });
+    }
+  });
+
+  // Favorite players routes
+  app.post("/api/users/:id/favorite-players", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { player } = z.object({ player: z.string() }).parse(req.body);
+      const user = await storage.addFavoritePlayer(userId, player);
+      res.json(user);
+    } catch (error) {
+      console.error('Error adding favorite player:', error);
+      res.status(400).json({ error: handleError(error) });
+    }
+  });
+
+  app.delete("/api/users/:id/favorite-players/:player", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const player = decodeURIComponent(req.params.player);
+      const user = await storage.removeFavoritePlayer(userId, player);
+      res.json(user);
+    } catch (error) {
+      console.error('Error removing favorite player:', error);
       res.status(400).json({ error: handleError(error) });
     }
   });
@@ -123,13 +189,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Trending topics from ESPN RSS
+  // AI-generated trending topics from real ESPN news
   app.get("/api/ai/trending-topics", async (req, res) => {
     try {
-      const topics = await espnNewsService.getTrendingAmericanSportsTopics();
-      res.json(topics);
+      const { aiNewsService } = await import('./ai-service');
+      const trendingTopics = await aiNewsService.generateTrendingTopics();
+      res.json(trendingTopics);
     } catch (error) {
-      console.error('Error fetching trending topics from ESPN RSS:', error);
+      console.error('Error generating trending topics from real news:', error);
       res.status(500).json({ error: handleError(error) });
     }
   });
@@ -157,13 +224,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Game routes
+  // Game routes - Real live scores from ESPN API
   app.get("/api/games/live", async (req, res) => {
     try {
-      const games = await storage.getLiveGames();
+      console.log('Fetching live games from ESPN API...');
+      const games = await espnScoresAPI.getLiveGames();
       res.json(games);
     } catch (error) {
       console.error('Error fetching live games:', error);
+      // Fallback to stored games if ESPN API fails
+      try {
+        const fallbackGames = await storage.getLiveGames();
+        res.json(fallbackGames);
+      } catch (fallbackError) {
+        res.status(500).json({ error: handleError(error) });
+      }
+    }
+  });
+
+  // API status endpoint for debugging
+  app.get("/api/games/status", async (req, res) => {
+    try {
+      const status = {
+        espnAPI: true, // ESPN API is always available (no key needed)
+        currentProvider: 'ESPN Sports API',
+        message: 'Live sports scores from ESPN undocumented API endpoints'
+      };
+      res.json(status);
+    } catch (error) {
       res.status(500).json({ error: handleError(error) });
     }
   });
@@ -235,6 +323,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(vote || null);
     } catch (error) {
       console.error('Error fetching user vote:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Sports teams and players routes
+  app.get("/api/sports/teams", async (req, res) => {
+    try {
+      console.log('📊 Fetching all teams from ESPN API...');
+      const teams = await sportsTeamsAPI.getAllTeams();
+      res.json(teams);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  app.get("/api/sports/players", async (req, res) => {
+    try {
+      console.log('🏆 Fetching all players from ESPN API...');
+      const players = await sportsTeamsAPI.getAllPlayers();
+      res.json(players);
+    } catch (error) {
+      console.error('Error fetching players:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // AI predictions route
+  app.get("/api/ai/predictions", async (req, res) => {
+    try {
+      console.log('🤖 Generating AI game predictions...');
+      const { aiNewsService } = await import('./ai-service');
+      const predictions = await aiNewsService.generateGamePredictions();
+      res.json(predictions);
+    } catch (error) {
+      console.error('Error generating AI predictions:', error);
       res.status(500).json({ error: handleError(error) });
     }
   });

@@ -11,6 +11,13 @@ export interface GeneratedNewsArticle {
   tags: string[];
 }
 
+export interface TrendingTopic {
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+}
+
 // You'll need to implement this web search function
 // This is a placeholder - you'll need to integrate with a news API like NewsAPI, Sports APIs, or web scraping
 interface NewsSearchResult {
@@ -399,36 +406,83 @@ Return only the JSON array.`;
     return sportImages[category as keyof typeof sportImages] || sportImages["Sports"];
   }
 
-  async generateTrendingTopics(): Promise<string[]> {
-    // You could also make these real by fetching from Twitter API, Google Trends, etc.
-    if (!this.model) {
-      return this.getFallbackTrendingTopics();
-    }
+  async generateTrendingTopics(): Promise<TrendingTopic[]> {
+    try {
+      console.log('Extracting trending topics from real ESPN news...');
+      
+      // First get real sports news to extract trending topics from
+      const realNews = await this.fetchRealSportsNews();
+      
+      if (realNews.length === 0 || !this.model) {
+        console.log('Using fallback trending topics');
+        return this.getFallbackDetailedTrendingTopics();
+      }
 
-    const prompt = `Generate 8 realistic trending sports hashtags that could be trending right now based on current sports seasons and typical sports discussions.
+      // Use AI to analyze real news and create ESPN-style trending topics
+      const newsContent = realNews.slice(0, 8).map(news => `Title: ${news.title}\nContent: ${news.content.substring(0, 200)}...`).join('\n\n');
+      
+      const prompt = `Based on these REAL current sports headlines and content, create ESPN-style trending topics. Each topic should be like a mini story preview similar to ESPN's trending section.
 
-Return as JSON array: ["#Topic1", "#Topic2", ...]
+REAL SPORTS NEWS:
+${newsContent}
+
+Create 5 trending topics in this format. Each should be engaging and informative:
+
+Return as JSON array:
+[
+  {
+    "title": "Compelling trending headline based on real news",
+    "description": "2-3 sentence description that explains why this is trending and what's happening",
+    "category": "Sport category (NBA/NFL/MLB/etc)",
+    "tags": ["relevant", "tags"]
+  }
+]
+
+Focus on the most compelling stories from the real news provided. Make them sound engaging and newsworthy.
 Return only the JSON array.`;
 
-    try {
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
       
       const cleanText = this.cleanJsonResponse(text);
-      const topics: string[] = JSON.parse(cleanText);
+      const topics: TrendingTopic[] = JSON.parse(cleanText);
       
-      return topics.slice(0, 8);
+      console.log('Generated detailed trending topics from real news:', topics.length, 'topics');
+      return topics.slice(0, 5);
     } catch (error) {
-      console.error('Error generating trending topics:', error);
-      return this.getFallbackTrendingTopics();
+      console.error('Error extracting trending topics from real news:', error);
+      return this.getFallbackDetailedTrendingTopics();
     }
   }
 
   private getFallbackTrendingTopics(): string[] {
     return [
-      "#TradeDeadline", "#PlayoffRace", "#MVP2025", "#DraftDay", 
-      "#ChampionshipSeries", "#SuperBowl2025", "#MarchMadness", "#WorldSeries"
+      "Contract", "Coaching", "Trade", "Breaking", 
+      "Free Agency", "Draft", "Playoffs", "Championship"
+    ];
+  }
+
+  private getFallbackDetailedTrendingTopics(): TrendingTopic[] {
+    return [
+      {
+        title: "NBA Coaching Carousel Continues",
+        description: "Multiple teams are evaluating their coaching staff as the offseason progresses. Front offices across the league are making strategic decisions about leadership.",
+        category: "NBA",
+        tags: ["coaching", "nba", "offseason"]
+      },
+      {
+        title: "NFL Free Agency Market Heating Up",
+        description: "Several high-profile players remain available as teams look to strengthen their rosters. Contract negotiations are intensifying across multiple positions.",
+        category: "NFL", 
+        tags: ["free agency", "nfl", "contracts"]
+      },
+      {
+        title: "MLB Trade Activity Expected to Rise",
+        description: "With the season progressing, teams are evaluating their roster needs. Both buyers and sellers are positioning themselves for potential moves.",
+        category: "MLB",
+        tags: ["trade", "mlb", "roster"]
+      }
     ];
   }
 
@@ -441,6 +495,94 @@ Return only the JSON array.`;
         category: "System",
         imageUrl: this.getSportsImage("System"),
         tags: ["configuration", "api", "real-news"]
+      }
+    ];
+  }
+
+  async generateGamePredictions(): Promise<any[]> {
+    try {
+      // First get real live games from ESPN
+      const { espnScoresAPI } = await import('./live-scores-api');
+      const liveGames = await espnScoresAPI.getLiveGames();
+      
+      console.log(`🎮 Found ${liveGames.length} live games for predictions:`, 
+        liveGames.slice(0, 3).map(g => `${g.awayTeam} vs ${g.homeTeam} (${g.sport})`));
+      
+      if (liveGames.length === 0) {
+        console.log('No live games found, returning fallback predictions');
+        return this.getFallbackPredictions();
+      }
+
+      if (!this.model) {
+        console.log('Firebase AI model not available, using real games without AI predictions');
+        return this.convertGamesToSimplePredictions(liveGames);
+      }
+
+      // Use real games for AI predictions
+      const gamesList = liveGames.slice(0, 4).map(game => 
+        `${game.awayTeam} vs ${game.homeTeam} (${game.sport} - ${game.status})`
+      ).join('\n');
+
+      const prompt = `Generate predictions for these REAL sports games:
+
+${gamesList}
+
+For each game, provide a prediction with analysis based on team performance, matchups, and trends. Format as JSON:
+
+[
+  {
+    "id": 1,
+    "title": "${liveGames[0]?.awayTeam} vs ${liveGames[0]?.homeTeam} - ${liveGames[0]?.status}",
+    "prediction": "Detailed prediction with reasoning (60-80 words)",
+    "confidence": 75,
+    "sport": "${liveGames[0]?.sport}",
+    "teams": ["${liveGames[0]?.awayTeam}", "${liveGames[0]?.homeTeam}"],
+    "updatedAt": "1 hour ago"
+  }
+]
+
+Include analysis about team strengths, recent performance, key players, and why one team might have an advantage.
+Confidence levels should be between 65-85%.
+
+Return only the JSON array.`;
+
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      const cleanText = this.cleanJsonResponse(text);
+      const predictions = JSON.parse(cleanText);
+      
+      return predictions;
+    } catch (error) {
+      console.error('Error generating game predictions:', error);
+      return this.getFallbackPredictions();
+    }
+  }
+
+  private convertGamesToSimplePredictions(games: any[]): any[] {
+    return games.slice(0, 4).map((game, index) => ({
+      id: index + 1,
+      title: `${game.awayTeam} vs ${game.homeTeam} - ${game.status}`,
+      prediction: `${game.homeTeam} has home field advantage in this ${game.sport} matchup. Based on current team form and historical performance, this should be a competitive game with both teams having chances to win.`,
+      confidence: Math.floor(Math.random() * 20) + 65, // Random 65-85%
+      sport: game.sport,
+      teams: [game.awayTeam, game.homeTeam],
+      updatedAt: "30 minutes ago"
+    }));
+  }
+
+  private getFallbackPredictions(): any[] {
+    // Note: These are generic predictions - should try to use real live games when possible
+    return [
+      {
+        id: 1,
+        title: "No Live Games Available",
+        prediction: "Check back later for AI predictions on live sports games. Predictions will be generated based on real upcoming games from ESPN's live data.",
+        confidence: 0,
+        sport: "N/A",
+        teams: [],
+        updatedAt: "now"
       }
     ];
   }
