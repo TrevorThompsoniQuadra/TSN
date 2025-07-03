@@ -181,10 +181,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Real sports news from ESPN RSS
   app.get("/api/news/breaking", async (req, res) => {
     try {
-      const articles = await espnNewsService.getBreakingAmericanSportsNews();
+      const sport = req.query.sport as string;
+      const articles = await espnNewsService.getBreakingAmericanSportsNews(sport);
       res.json(articles);
     } catch (error) {
       console.error('Error fetching breaking news from ESPN RSS:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // All sports news from ESPN - fetches comprehensive news
+  app.get("/api/news/all", async (req, res) => {
+    try {
+      console.log('Fetching all ESPN sports news...');
+      const articles = await espnNewsService.getBreakingAmericanSportsNews();
+      console.log(`Retrieved ${articles.length} total articles from ESPN`);
+      res.json(articles);
+    } catch (error) {
+      console.error('Error fetching all ESPN news:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Sport-specific news filtering
+  app.get("/api/news/sport/:sport", async (req, res) => {
+    try {
+      const sport = req.params.sport;
+      const articles = await espnNewsService.getBreakingAmericanSportsNews(sport);
+      res.json(articles);
+    } catch (error) {
+      console.error(`Error fetching ${req.params.sport} news:`, error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Team-specific news search
+  app.get("/api/news/team/:teamName", async (req, res) => {
+    try {
+      const teamName = decodeURIComponent(req.params.teamName);
+      const articles = await espnNewsService.getTeamSpecificNews(teamName);
+      res.json(articles);
+    } catch (error) {
+      console.error('Error fetching team-specific news:', error);
       res.status(500).json({ error: handleError(error) });
     }
   });
@@ -228,7 +266,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/games/live", async (req, res) => {
     try {
       console.log('Fetching live games from ESPN API...');
-      const games = await espnScoresAPI.getLiveGames();
+      const sport = req.query.sport as string;
+      const games = await espnScoresAPI.getLiveGames(sport);
+      
+
+      
       res.json(games);
     } catch (error) {
       console.error('Error fetching live games:', error);
@@ -239,6 +281,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (fallbackError) {
         res.status(500).json({ error: handleError(error) });
       }
+    }
+  });
+
+  // Sport-specific live scores
+  app.get("/api/games/sport/:sport", async (req, res) => {
+    try {
+      const sport = req.params.sport;
+      console.log(`Fetching live games for ${sport} from ESPN API...`);
+      const games = await espnScoresAPI.getLiveGames(sport);
+      res.json(games);
+    } catch (error) {
+      console.error(`Error fetching ${req.params.sport} games:`, error);
+      res.status(500).json({ error: handleError(error) });
     }
   });
 
@@ -267,16 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/games/sport/:sport", async (req, res) => {
-    try {
-      const sport = req.params.sport;
-      const games = await storage.getGamesBySport(sport);
-      res.json(games);
-    } catch (error) {
-      console.error('Error fetching games by sport:', error);
-      res.status(500).json({ error: handleError(error) });
-    }
-  });
+
 
   // Poll routes
   app.get("/api/polls", async (req, res) => {
@@ -359,6 +405,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(predictions);
     } catch (error) {
       console.error('Error generating AI predictions:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  // Game Polls routes
+  app.get("/api/game-polls", async (req, res) => {
+    try {
+      console.log('📊 Fetching active game polls...');
+      const gamePolls = await storage.getActiveGamePolls();
+      res.json(gamePolls);
+    } catch (error) {
+      console.error('Error fetching game polls:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  app.post("/api/game-polls/create-daily", async (req, res) => {
+    try {
+      console.log('📊 Creating daily game polls...');
+      const { gamePollsService } = await import('./game-polls-service');
+      const gamePolls = await gamePollsService.createDailyGamePolls();
+      res.json(gamePolls);
+    } catch (error) {
+      console.error('Error creating daily game polls:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  app.post("/api/game-polls/:pollId/predict", async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const { userId, predictedWinner } = req.body;
+      
+      // Check if user already has a prediction for this poll
+      const existingPrediction = await storage.getUserPrediction(userId, pollId);
+      if (existingPrediction) {
+        return res.status(400).json({ error: "You have already made a prediction for this game" });
+      }
+
+      const prediction = await storage.createGamePrediction({
+        userId,
+        gamePollId: pollId,
+        predictedWinner,
+        isCorrect: null
+      });
+      
+      res.json(prediction);
+    } catch (error) {
+      console.error('Error creating game prediction:', error);
+      res.status(400).json({ error: handleError(error) });
+    }
+  });
+
+  app.get("/api/users/:userId/predictions", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const predictions = await storage.getUserPredictions(userId);
+      res.json(predictions);
+    } catch (error) {
+      console.error('Error fetching user predictions:', error);
+      res.status(500).json({ error: handleError(error) });
+    }
+  });
+
+  app.get("/api/users/:userId/points", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ points: user.points || 0 });
+    } catch (error) {
+      console.error('Error fetching user points:', error);
       res.status(500).json({ error: handleError(error) });
     }
   });

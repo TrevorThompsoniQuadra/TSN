@@ -26,7 +26,6 @@ interface LiveGame {
     second?: boolean;
     third?: boolean;
   };
-  // Additional game state
   situation?: string;
 }
 
@@ -95,6 +94,7 @@ const ESPN_ENDPOINTS = {
 export function LiveScores() {
   const [games, setGames] = useState<LiveGame[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [showAll, setShowAll] = useState<boolean>(false);
 
   const fetchLiveGames = async () => {
     setIsLoading(true);
@@ -323,6 +323,38 @@ export function LiveScores() {
     return () => clearInterval(interval);
   }, []);
 
+  const getTeamColor = (team: string) => {
+    const colors = {
+      'Lakers': 'bg-purple-600',
+      'Celtics': 'bg-green-600', 
+      'Warriors': 'bg-yellow-500',
+      'Mavericks': 'bg-blue-600',
+      'Heat': 'bg-red-600',
+      'Suns': 'bg-orange-600',
+      'Chiefs': 'bg-red-600',
+      'Patriots': 'bg-blue-700',
+      'Cowboys': 'bg-blue-800',
+      'Packers': 'bg-green-700',
+      'Yankees': 'bg-gray-700',
+      'Dodgers': 'bg-blue-600',
+      'Red Sox': 'bg-red-700',
+    };
+    return colors[team as keyof typeof colors] || 'bg-gray-600';
+  };
+
+  const getSportColor = (sport: string) => {
+    const colors = {
+      'Basketball': 'bg-orange-500',
+      'Football': 'bg-brown-600',
+      'Baseball': 'bg-green-600',
+      'Hockey': 'bg-blue-600',
+      'Soccer': 'bg-black',
+    };
+    return colors[sport as keyof typeof colors] || 'bg-gray-500';
+  };
+
+
+
   if (isLoading) {
     return (
       <Card>
@@ -359,7 +391,7 @@ export function LiveScores() {
       <CardContent>
         {games && games.length > 0 ? (
           <div className="space-y-4">
-            {games.map((game) => (
+            {(showAll ? games : games.slice(0, 3)).map((game) => (
               <div key={game.id} className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0">
                 <div className="flex items-center justify-between mb-1">
                   <Badge className="bg-blue-600 text-white text-xs">
@@ -412,13 +444,24 @@ export function LiveScores() {
             <p className="text-sm">Check back later for live scores</p>
           </div>
         )}
-        <Button 
-          variant="ghost" 
-          className="w-full mt-4 text-blue-600" 
-          onClick={fetchLiveGames}
-        >
-          Refresh Live Scores
-        </Button>
+        <div className="flex gap-2 mt-4">
+          <Button 
+            variant="ghost" 
+            className="flex-1 text-blue-600" 
+            onClick={fetchLiveGames}
+          >
+            Refresh Live Scores
+          </Button>
+          {games.length > 3 && (
+            <Button 
+              variant="outline" 
+              className="text-blue-600 border-blue-600" 
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? 'Show Less' : `Show All (${games.length})`}
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

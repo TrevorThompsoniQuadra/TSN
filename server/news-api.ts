@@ -16,16 +16,19 @@ export class ESPNNewsService {
     private apiUrl = 'https://site.api.espn.com/apis/site/v2/sports';
     private newsUrl = 'https://site.api.espn.com/apis/v2/sports/news';
 
-    async getBreakingAmericanSportsNews(): Promise<NewsDataArticle[]> {
+    async getBreakingAmericanSportsNews(sport?: string): Promise<NewsDataArticle[]> {
         try {
             console.log('Fetching breaking American sports news from ESPN API...');
             
-            // Try multiple ESPN news endpoints
+            // Try multiple ESPN news endpoints with higher limits
             const newsEndpoints = [
-                `${this.newsUrl}?limit=20`,
-                `${this.apiUrl}/football/nfl/news`,
-                `${this.apiUrl}/basketball/nba/news`,
-                `${this.apiUrl}/baseball/mlb/news`
+                `${this.newsUrl}?limit=50`,
+                `${this.apiUrl}/football/nfl/news?limit=25`,
+                `${this.apiUrl}/basketball/nba/news?limit=25`,
+                `${this.apiUrl}/baseball/mlb/news?limit=25`,
+                `${this.apiUrl}/basketball/mens-college-basketball/news?limit=15`,
+                `${this.apiUrl}/football/college-football/news?limit=15`,
+                `${this.apiUrl}/golf/news?limit=10`
             ];
 
             const allArticles: NewsDataArticle[] = [];
@@ -47,10 +50,19 @@ export class ESPNNewsService {
             }
 
             if (allArticles.length > 0) {
-                console.log(`ESPN API returned ${allArticles.length} news articles`);
+                let filteredArticles = allArticles;
+                
+                // Filter by sport if specified
+                if (sport) {
+                    filteredArticles = this.filterArticlesBySport(allArticles, sport);
+                    console.log(`ESPN API returned ${filteredArticles.length} articles for sport: ${sport}`);
+                } else {
+                    console.log(`ESPN API returned ${allArticles.length} news articles`);
+                }
+                
                 // Remove duplicates based on title
-                const uniqueArticles = this.removeDuplicates(allArticles);
-                return uniqueArticles.slice(0, 10);
+                const uniqueArticles = this.removeDuplicates(filteredArticles);
+                return uniqueArticles;
             }
 
             // If no articles from API, try RSS as fallback
@@ -78,7 +90,7 @@ export class ESPNNewsService {
             const articles = this.parseRSSFeed(xmlText);
             
             console.log(`ESPN RSS returned ${articles.length} articles`);
-            return articles.slice(0, 10);
+            return articles;
 
         } catch (error) {
             console.error('ESPN RSS also failed:', error);
@@ -131,6 +143,39 @@ export class ESPNNewsService {
             }
             seen.add(key);
             return true;
+        });
+    }
+
+    private filterArticlesBySport(articles: NewsDataArticle[], sport: string): NewsDataArticle[] {
+        const sportLower = sport.toLowerCase();
+        
+        // Map navigation names to ESPN URL patterns
+        const sportMappings: { [key: string]: string[] } = {
+            'nba': ['nba', 'basketball'],
+            'nfl': ['nfl', 'football'],
+            'mlb': ['mlb', 'baseball'],
+            'nhl': ['nhl', 'hockey'],
+            'ncaam': ['mens-college-basketball', 'college-basketball', 'ncb'],
+            'cfb': ['college-football', 'cfb'],
+            'wnba': ['wnba', 'womens-basketball'],
+            'pga': ['golf', 'pga'],
+            'liv': ['golf', 'liv']
+        };
+
+        const urlPatterns = sportMappings[sportLower] || [sportLower];
+        
+        return articles.filter(article => {
+            // Check if article URL contains sport patterns
+            const urlLower = article.url.toLowerCase();
+            const titleLower = article.title.toLowerCase();
+            const categoryLower = article.category.toLowerCase();
+            
+            return urlPatterns.some(pattern => 
+                urlLower.includes(`espn.com/${pattern}/`) ||
+                urlLower.includes(`/${pattern}/`) ||
+                titleLower.includes(pattern) ||
+                categoryLower.includes(pattern)
+            );
         });
     }
 
@@ -411,6 +456,52 @@ In the meantime, you can visit ESPN.com directly for the latest sports coverage.
         } catch (error) {
             console.error('Error getting trending topics:', error);
             return ['NBA', 'NFL', 'MLB', 'College Football', 'NBA Trade', 'Injury Report'];
+        }
+    }
+
+    // Get team-specific news articles (like ESPN team pages)
+    async getTeamSpecificNews(teamName: string): Promise<NewsDataArticle[]> {
+        try {
+            console.log(`🔍 Fetching team-specific news for: ${teamName}`);
+            
+            // Get all breaking news first
+            const allArticles = await this.getBreakingAmericanSportsNews();
+            
+            // Filter articles that mention the team name (case insensitive)
+            const teamArticles = allArticles.filter(article => {
+                const teamNameLower = teamName.toLowerCase();
+                const titleLower = article.title.toLowerCase();
+                const contentLower = article.content.toLowerCase();
+                const summaryLower = article.summary.toLowerCase();
+                
+                return titleLower.includes(teamNameLower) || 
+                       contentLower.includes(teamNameLower) || 
+                       summaryLower.includes(teamNameLower) ||
+                       article.tags.some(tag => tag.toLowerCase().includes(teamNameLower));
+            });
+
+            console.log(`✅ Found ${teamArticles.length} direct matches for ${teamName}`);
+            
+            // If no direct matches, try partial team name matches (e.g., "titans" for "tennessee titans")
+            if (teamArticles.length === 0) {
+                const teamWords = teamName.toLowerCase().split(' ');
+                const partialMatches = allArticles.filter(article => {
+                    const titleLower = article.title.toLowerCase();
+                    const contentLower = article.content.toLowerCase();
+                    
+                    return teamWords.some(word => 
+                        word.length > 3 && (titleLower.includes(word) || contentLower.includes(word))
+                    );
+                });
+                
+                console.log(`✅ Found ${partialMatches.length} partial matches for ${teamName}`);
+                return partialMatches.slice(0, 10);
+            }
+            
+            return teamArticles.slice(0, 10);
+        } catch (error) {
+            console.error('❌ Error fetching team-specific news:', error);
+            return [];
         }
     }
 }

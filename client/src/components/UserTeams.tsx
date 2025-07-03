@@ -102,6 +102,8 @@ export function UserTeams() {
       // Clear cache and set fresh data
       queryClient.removeQueries({ queryKey: ['/api/users', user?.id] });
       queryClient.setQueryData(['/api/users', user?.id], updatedUser);
+      // Invalidate favorites news cache to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['/api/news/favorites'] });
       // Force refetch
       refetchUser();
       setIsDialogOpen(false);
@@ -119,6 +121,8 @@ export function UserTeams() {
     onSuccess: (updatedUser) => {
       // Update cache immediately with fresh data
       queryClient.setQueryData(['/api/users', user?.id], updatedUser);
+      // Invalidate favorites news cache to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['/api/news/favorites'] });
       // Force refetch to ensure consistency
       queryClient.refetchQueries({ queryKey: ['/api/users', user?.id] });
     }

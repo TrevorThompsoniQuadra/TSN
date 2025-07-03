@@ -33,6 +33,7 @@ export default function Home() {
 
   // Console logging when data changes
   if (newsData) {
+    console.log('📰 REAL NEWS LOADED:', newsData.length, 'articles');
     console.log('🔥 Article titles:', newsData.map(a => a.title));
   }
   if (newsError) {
@@ -76,9 +77,19 @@ export default function Home() {
     setSelectedArticle(null);
   };
 
-  const featuredArticle = articles?.[0];
-  const otherArticles = articles?.slice(1) || [];
+  // Console logging for debugging
+  console.log('🔍 HOME PAGE STATE:');
+  console.log('- Real News Loading:', isLoadingNews);
+  console.log('- Real News Data:', newsData?.length || 0, 'articles');
+  console.log('- Stored Articles Loading:', isLoadingStored);
+  console.log('- Final Articles Count:', articles?.length || 0);
+  console.log('- Any Errors:', error ? 'Yes' : 'No');
 
+  // Limit to 10 articles for home page
+  const limitedArticles = articles?.slice(0, 9) || [];
+  const featuredArticle = limitedArticles[0];
+  const otherArticles = limitedArticles.slice(1) || [];
+  console.log(error)
   if (error) {
     return (
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -96,6 +107,9 @@ export default function Home() {
       </div>
     );
   }
+
+
+  console.log(selectedArticle, "asedasdf")
 
   return (
     <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

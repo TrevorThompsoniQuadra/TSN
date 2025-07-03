@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   favoriteTeams: text("favorite_teams").array().default([]),
   favoritePlayers: text("favorite_players").array().default([]),
   favoriteSports: text("favorite_sports").array().default([]),
+  points: integer("points").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -75,6 +76,33 @@ export const userVotes = pgTable("user_votes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const gamePolls = pgTable("game_polls", {
+  id: serial("id").primaryKey(),
+  gameId: text("game_id").notNull(), // ESPN game ID
+  homeTeam: text("home_team").notNull(),
+  awayTeam: text("away_team").notNull(),
+  sport: text("sport").notNull(),
+  league: text("league").notNull(),
+  gameDate: timestamp("game_date").notNull(),
+  status: text("status").notNull(), // 'upcoming', 'live', 'final'
+  homeScore: integer("home_score"),
+  awayScore: integer("away_score"),
+  winner: text("winner"), // 'home', 'away', null for upcoming games
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const gamePredictions = pgTable("game_predictions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  gamePollId: integer("game_poll_id").references(() => gamePolls.id),
+  predictedWinner: text("predicted_winner").notNull(), // 'home' or 'away'
+  isCorrect: boolean("is_correct"), // null until game is resolved
+  pointsEarned: integer("points_earned").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -104,6 +132,17 @@ export const insertPollSchema = createInsertSchema(polls).omit({
   totalVotes: true,
 });
 
+export const insertGamePollSchema = createInsertSchema(gamePolls).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertGamePredictionSchema = createInsertSchema(gamePredictions).omit({
+  id: true,
+  createdAt: true,
+  pointsEarned: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Article = typeof articles.$inferSelect;
@@ -115,3 +154,7 @@ export type InsertGame = z.infer<typeof insertGameSchema>;
 export type Poll = typeof polls.$inferSelect;
 export type InsertPoll = z.infer<typeof insertPollSchema>;
 export type UserVote = typeof userVotes.$inferSelect;
+export type GamePoll = typeof gamePolls.$inferSelect;
+export type InsertGamePoll = z.infer<typeof insertGamePollSchema>;
+export type GamePrediction = typeof gamePredictions.$inferSelect;
+export type InsertGamePrediction = z.infer<typeof insertGamePredictionSchema>;

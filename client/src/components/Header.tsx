@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Search, Bell, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,12 +17,22 @@ export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { user, firebaseUser } = useAuth();
+  const [, setLocation] = useLocation();
 
   const handleSignOut = async () => {
     try {
       await signOut();
     } catch (error) {
       console.error("Error signing out:", error);
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      // Navigate to team search page
+      setLocation(`/team/${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery("");
     }
   };
 
@@ -37,7 +47,7 @@ export function Header() {
     { name: "CFB", href: "/cfb" },
     { name: "LIV", href: "/liv" },
     { name: "MLB", href: "/mlb" },
-    { name: "More", href: "/more" },
+    { name: "Favorites", href: "/favorites" },
   ];
 
   return (
@@ -70,16 +80,16 @@ export function Header() {
           {/* Search and User */}
           <div className="flex items-center space-x-4">
             {/* Search */}
-            <div className="relative hidden sm:block">
+            <form onSubmit={handleSearch} className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 type="text"
-                placeholder="Ask me about sports..."
+                placeholder="Search teams or players..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-80 pl-10"
               />
-            </div>
+            </form>
 
             {/* Notifications */}
             <Button variant="ghost" size="sm" className="relative">

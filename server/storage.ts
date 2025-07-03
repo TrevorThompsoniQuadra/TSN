@@ -5,6 +5,8 @@ import {
   games,
   polls,
   userVotes,
+  gamePolls,
+  gamePredictions,
   type User,
   type InsertUser,
   type Article,
@@ -16,6 +18,10 @@ import {
   type Poll,
   type InsertPoll,
   type UserVote,
+  type GamePoll,
+  type InsertGamePoll,
+  type GamePrediction,
+  type InsertGamePrediction,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -55,6 +61,18 @@ export interface IStorage {
   createPoll(poll: InsertPoll): Promise<Poll>;
   voteOnPoll(userId: number, pollId: number, optionIndex: number): Promise<void>;
   getUserVote(userId: number, pollId: number): Promise<UserVote | undefined>;
+  
+  // Game Polls methods
+  getActiveGamePolls(): Promise<GamePoll[]>;
+  getGamePollById(id: number): Promise<GamePoll | undefined>;
+  createGamePoll(gamePoll: InsertGamePoll): Promise<GamePoll>;
+  updateGamePoll(id: number, gamePoll: Partial<InsertGamePoll>): Promise<GamePoll>;
+  
+  // Game Predictions methods
+  getUserPrediction(userId: number, gamePollId: number): Promise<GamePrediction | undefined>;
+  createGamePrediction(prediction: InsertGamePrediction): Promise<GamePrediction>;
+  getUserPredictions(userId: number): Promise<GamePrediction[]>;
+  updateUserPoints(userId: number, points: number): Promise<User>;
 }
 
 export class MemStorage implements IStorage {
@@ -64,6 +82,8 @@ export class MemStorage implements IStorage {
   private games: Map<number, Game> = new Map();
   private polls: Map<number, Poll> = new Map();
   private userVotes: Map<number, UserVote> = new Map();
+  private gamePolls: Map<number, GamePoll> = new Map();
+  private gamePredictions: Map<number, GamePrediction> = new Map();
   
   private currentUserId = 1;
   private currentArticleId = 1;
@@ -71,6 +91,8 @@ export class MemStorage implements IStorage {
   private currentGameId = 1;
   private currentPollId = 1;
   private currentVoteId = 1;
+  private currentGamePollId = 1;
+  private currentGamePredictionId = 1;
 
   constructor() {
     this.seedData();
@@ -172,6 +194,7 @@ export class MemStorage implements IStorage {
       favoriteTeams: user.favoriteTeams || null,
       favoritePlayers: user.favoritePlayers || null,
       favoriteSports: user.favoriteSports || null,
+      points: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -431,6 +454,91 @@ export class MemStorage implements IStorage {
   async getUserVote(userId: number, pollId: number): Promise<UserVote | undefined> {
     return Array.from(this.userVotes.values())
       .find(vote => vote.userId === userId && vote.pollId === pollId);
+  }
+
+  // Game Polls methods
+  async getActiveGamePolls(): Promise<GamePoll[]> {
+    const now = new Date();
+    return Array.from(this.gamePolls.values())
+      .filter(gamePoll => gamePoll.isActive && gamePoll.expiresAt > now)
+      .sort((a, b) => a.gameDate.getTime() - b.gameDate.getTime());
+  }
+
+  async getGamePollById(id: number): Promise<GamePoll | undefined> {
+    return this.gamePolls.get(id);
+  }
+
+  async createGamePoll(gamePoll: InsertGamePoll): Promise<GamePoll> {
+    const newGamePoll: GamePoll = {
+      id: this.currentGamePollId++,
+      ...gamePoll,
+      homeScore: gamePoll.homeScore || null,
+      awayScore: gamePoll.awayScore || null,
+      winner: gamePoll.winner || null,
+      isActive: gamePoll.isActive ?? true,
+      createdAt: new Date(),
+    };
+    
+    this.gamePolls.set(newGamePoll.id, newGamePoll);
+    return newGamePoll;
+  }
+
+  async updateGamePoll(id: number, gamePoll: Partial<InsertGamePoll>): Promise<GamePoll> {
+    const existingGamePoll = this.gamePolls.get(id);
+    if (!existingGamePoll) {
+      throw new Error("Game poll not found");
+    }
+
+    const updatedGamePoll: GamePoll = {
+      ...existingGamePoll,
+      ...gamePoll,
+    };
+    
+    this.gamePolls.set(id, updatedGamePoll);
+    return updatedGamePoll;
+  }
+
+  // Game Predictions methods
+  async getUserPrediction(userId: number, gamePollId: number): Promise<GamePrediction | undefined> {
+    return Array.from(this.gamePredictions.values())
+      .find(prediction => prediction.userId === userId && prediction.gamePollId === gamePollId);
+  }
+
+  async createGamePrediction(prediction: InsertGamePrediction): Promise<GamePrediction> {
+    const newPrediction: GamePrediction = {
+      id: this.currentGamePredictionId++,
+      ...prediction,
+      userId: prediction.userId || null,
+      gamePollId: prediction.gamePollId || null,
+      isCorrect: prediction.isCorrect || null,
+      pointsEarned: 0,
+      createdAt: new Date(),
+    };
+    
+    this.gamePredictions.set(newPrediction.id, newPrediction);
+    return newPrediction;
+  }
+
+  async getUserPredictions(userId: number): Promise<GamePrediction[]> {
+    return Array.from(this.gamePredictions.values())
+      .filter(prediction => prediction.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async updateUserPoints(userId: number, points: number): Promise<User> {
+    const user = this.users.get(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const updatedUser: User = {
+      ...user,
+      points: (user.points || 0) + points,
+      updatedAt: new Date(),
+    };
+    
+    this.users.set(userId, updatedUser);
+    return updatedUser;
   }
 }
 
